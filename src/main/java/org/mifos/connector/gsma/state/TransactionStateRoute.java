@@ -112,7 +112,7 @@ public class TransactionStateRoute extends RouteBuilder {
 
 
         from("direct:get-transaction-state-channel")
-                .id("get-transaction-state")
+                .id("get-transaction-state-channel")
                 .removeHeader("*")
                 .setHeader(Exchange.HTTP_METHOD, constant("GET"))
                 .toD(ChannelURL + "channel/requeststates" + "/${exchangeProperty."+SERVER_CORRELATION+"}" + "?bridgeEndpoint=true&throwExceptionOnFailure=false");
