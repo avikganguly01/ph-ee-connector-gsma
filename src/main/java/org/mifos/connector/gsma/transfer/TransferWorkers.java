@@ -6,7 +6,7 @@ import org.apache.camel.CamelContext;
 import org.apache.camel.Exchange;
 import org.apache.camel.ProducerTemplate;
 import org.apache.camel.support.DefaultExchange;
-import org.mifos.connector.gsma.transfer.dto.GSMATransaction;
+import org.mifos.connector.common.gsma.dto.GSMATransaction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -47,6 +47,7 @@ public class TransferWorkers {
                 .handler((client, job) -> {
                     logger.info("Job '{}' started from process '{}' with key {}", job.getType(), job.getBpmnProcessId(), job.getKey());
                     Map<String, Object> variables = job.getVariablesAsMap();
+                    variables.put(TRANSFER_RETRY_COUNT, -1);
 
                     Exchange exchange = new DefaultExchange(camelContext);
                     exchange.setProperty(CORRELATION_ID, variables.get("transactionId"));
@@ -94,6 +95,43 @@ public class TransferWorkers {
                             .join();
                 })
                 .name("initiateIntTransfer")
+                .maxJobsActive(workerMaxJobs)
+                .open();
+
+        zeebeClient.newWorker()
+                .jobType("initiatePayeeDeposit")
+                .handler((client, job) -> {
+                    logger.info("Job '{}' started from process '{}' with key {}", job.getType(), job.getBpmnProcessId(), job.getKey());
+
+                    Map<String, Object> variables = job.getVariablesAsMap();
+                    GSMATransaction gsmaChannelRequest = objectMapper.readValue((String) variables.get("gsmaChannelRequest"), GSMATransaction.class);
+                    GSMATransaction gsmaPayeeRequest = new GSMATransaction();
+
+                    // Do currency converted values instead of original values
+                    String converetdAmount = gsmaChannelRequest.getAmount();
+                    String convertedCurrency = gsmaChannelRequest.getCurrency();
+
+                    gsmaPayeeRequest.setDescriptionText("Origianl Amount = " + gsmaChannelRequest.getAmount() + ", currency = " + gsmaChannelRequest.getCurrency());
+                    gsmaPayeeRequest.setAmount(converetdAmount);
+                    gsmaPayeeRequest.setCurrency(convertedCurrency);
+                    gsmaPayeeRequest.setRequestingOrganisationTransactionReference(variables.get("transactionId").toString());
+                    gsmaPayeeRequest.setCreditParty(gsmaChannelRequest.getCreditParty());
+                    gsmaPayeeRequest.setDebitParty(gsmaChannelRequest.getDebitParty());
+                    gsmaPayeeRequest.setReceivingLei(gsmaChannelRequest.getReceivingLei());
+                    gsmaPayeeRequest.setRequestingLei(gsmaChannelRequest.getRequestingLei());
+                    gsmaPayeeRequest.setType("transfer");
+
+                    Exchange exchange = new DefaultExchange(camelContext);
+                    exchange.setProperty(GSMA_CHANNEL_REQUEST, gsmaPayeeRequest);
+                    exchange.setProperty(RECEIVING_TENANT, gsmaChannelRequest.getReceivingLei());
+
+                    producerTemplate.send("direct:transfer-route", exchange);
+
+                    client.newCompleteCommand(job.getKey())
+                            .send()
+                            .join();
+                })
+                .name("initiatePayeeDeposit")
                 .maxJobsActive(workerMaxJobs)
                 .open();
     }

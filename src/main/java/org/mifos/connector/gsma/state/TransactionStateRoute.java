@@ -4,11 +4,11 @@ import org.apache.camel.Exchange;
 import org.apache.camel.LoggingLevel;
 import org.apache.camel.builder.RouteBuilder;
 import org.apache.camel.model.dataformat.JsonLibrary;
-import org.mifos.connector.gsma.account.dto.ErrorDTO;
-import org.mifos.connector.gsma.auth.dto.AccessTokenStore;
+import org.mifos.connector.common.gsma.dto.ErrorDTO;
+import org.mifos.connector.common.gsma.dto.RequestStateDTO;
+import org.mifos.connector.gsma.auth.AccessTokenStore;
 import org.mifos.connector.gsma.transfer.CorrelationIDStore;
 import org.mifos.connector.gsma.transfer.TransferResponseProcessor;
-import org.mifos.connector.gsma.transfer.dto.RequestStateDTO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,6 +38,9 @@ public class TransactionStateRoute extends RouteBuilder {
 
     @Value("${gsma.api.host}")
     private String BaseURL;
+
+    @Value("${gsma.api.channel}")
+    private String ChannelURL;
 
     private Logger logger = LoggerFactory.getLogger(this.getClass());
 
@@ -106,6 +109,13 @@ public class TransactionStateRoute extends RouteBuilder {
                 .setHeader("X-Date", simple(ZonedDateTime.now( ZoneOffset.UTC ).format( DateTimeFormatter.ISO_INSTANT )))
                 .setHeader("Authorization", simple("Bearer ${exchangeProperty."+ACCESS_TOKEN+"}"))
                 .toD(BaseURL + "/requeststates" + "/${exchangeProperty."+SERVER_CORRELATION+"}" + "?bridgeEndpoint=true&throwExceptionOnFailure=false");
+
+
+        from("direct:get-transaction-state-channel")
+                .id("get-transaction-state-channel")
+                .removeHeader("*")
+                .setHeader(Exchange.HTTP_METHOD, constant("GET"))
+                .toD(ChannelURL + "channel/requeststates" + "/${exchangeProperty."+SERVER_CORRELATION+"}" + "?bridgeEndpoint=true&throwExceptionOnFailure=false");
 
         /**
          * Error route handler
